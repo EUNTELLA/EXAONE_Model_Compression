@@ -20,7 +20,6 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from llmcompressor import oneshot
 from llmcompressor.modifiers.quantization import GPTQModifier
 
-# Setting
 MODEL_ID = "./base_model"
 OUT_DIR="./model"
 

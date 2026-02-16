@@ -4,7 +4,7 @@
 - Scheme: W4A16
 - Targets: Linear
 - Ignore: embed_tokens, lm_head
-- Dataset: LGAI-EXAONE/MANTA-1M (train[:32])
+- Dataset: LGAI-EXAONE/MANTA-1M
 - Max Seq Length: 128
 - Torch dtype: bfloat16
 

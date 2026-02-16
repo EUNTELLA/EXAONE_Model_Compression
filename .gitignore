@@ -22,3 +22,13 @@ output/
 __pycache__/
 *.log
 .cache/
+baseline_submit/
+base_model/
+model/
+output/
+.vscode/
+*.zip
+*.pt
+*.bin
+*.safetensors
+train/
