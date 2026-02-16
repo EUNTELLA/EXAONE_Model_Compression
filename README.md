@@ -1,8 +1,16 @@
-# EXAONE_Model_Compression
+# GPTQ W4A16 Experiment (calib512)
 
-메인 브랜치 요약 문서입니다.
+## Settings
+- Scheme: W4A16
+- Targets: Linear
+- Ignore: embed_tokens, lm_head
+- Dataset: LGAI-EXAONE/MANTA-1M
+- Calibration Samples: 512
+- Max Seq Length: 512
+- Torch dtype: bfloat16
 
-실험/개선 상세 README:
-https://github.com/EUNTELLA/EXAONE_Model_Compression/blob/<branch-name>/README.md
+## Result
+- Score: 0.5886399455
 
-`<branch-name>`을 실제 브랜치명으로 바꿔 사용하세요.
+## Notes
+- Baseline GPTQ oneshot quantization.
