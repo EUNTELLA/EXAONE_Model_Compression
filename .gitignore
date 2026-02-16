@@ -1,0 +1,24 @@
+# submissions / artifacts
+*.zip
+
+# training outputs
+output/
+checkpoint*/
+*.pt
+*.bin
+*.safetensors
+*.ckpt
+
+
+# big artifacts
+*.zip
+output/
+*.pt
+*.bin
+*.safetensors
+*.ckpt
+# misc
+.vscode/
+__pycache__/
+*.log
+.cache/
