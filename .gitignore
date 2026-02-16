@@ -1,0 +1,34 @@
+# Data & Models
+data/
+models/
+checkpoints/
+output/
+base_model/
+baseline_submit/
+
+
+*.pt
+*.ckpt
+*.zip
+output/
+checkpoints/
+baseline_submit/
+model*/
+base_model/
+# Weights
+*.pt
+*.pth
+*.bin
+*.safetensors
+
+# Cache
+__pycache__/
+.cache/
+
+# Env
+.env
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
