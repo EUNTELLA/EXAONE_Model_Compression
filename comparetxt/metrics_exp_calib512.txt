@@ -1,0 +1,6 @@
+exp_id=exp_calib512
+calib_pool_split=train[0:4096]
+eval_pool_split=train[5000:9096]
+calib_samples=512
+max_seq_length=512
+keep_layers=[0, 1, 2, 3, 4, 26]

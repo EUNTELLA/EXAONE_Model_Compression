@@ -5,6 +5,7 @@ checkpoints/
 output/
 base_model/
 baseline_submit/
+<<<<<<< HEAD
 
 
 *.pt
@@ -15,6 +16,11 @@ checkpoints/
 baseline_submit/
 model*/
 base_model/
+=======
+.zip
+
+
+>>>>>>> 316c5f0 (chore: upload file)
 # Weights
 *.pt
 *.pth
