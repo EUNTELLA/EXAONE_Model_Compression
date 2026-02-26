@@ -4,6 +4,7 @@ models/
 checkpoints/
 output/
 baseline_submit/
+outputs/
 
 *.pt
 *.ckpt
@@ -18,10 +19,13 @@ base_model/
 *.pth
 *.bin
 *.safetensors
+*.jsonl
+*.csv
 
 # Cache
 __pycache__/
 .cache/
+*.ipynb_checkpoints/
 
 # Env
 .env
