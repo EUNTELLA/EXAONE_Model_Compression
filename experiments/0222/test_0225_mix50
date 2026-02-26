@@ -1,0 +1,195 @@
+import os, gc, json, time, math, random, traceback
+from pathlib import Path
+import pandas as pd
+import torch
+
+from vllm import LLM, SamplingParams
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
+assert torch.cuda.is_available(), "GPU 런타임으로 변경하세요."
+print("GPU:", torch.cuda.get_device_name(0))
+
+BASE_MODELS_DIR = Path("/content/drive/MyDrive/models")
+EVAL_JSONL = Path("/content/drive/MyDrive/eval/eval_official_512.jsonl")
+OUT_DIR = Path("/content/drive/MyDrive/eval")
+OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+CHECKPOINT_CSV = OUT_DIR / "model_eval_checkpoint.csv"
+FINAL_CSV = OUT_DIR / "model_eval_final.csv"
+
+MODEL_DIRS = {
+    "A_anchor": BASE_MODELS_DIR / "out_q_official_keep_0_4_26_30",
+    "B_mix70_30": BASE_MODELS_DIR / "out_q_0225_mix70_30",
+    "C_mix50_50": BASE_MODELS_DIR / "out_q_0225_mix50_50",
+}
+
+NUM_SAMPLES = 512
+SEED = 42
+MAX_SEQ_LEN_FOR_PPL = 256
+
+TP_SIZE = 1
+GPU_MEM_UTIL = 0.85
+MAX_GEN_TOKS = 16384
+TEMPERATURE = 0.0
+TOP_P = 1.0
+
+# 필요 시 실제 공유 산식으로 교체
+def submission_score(test_time_sec: float, ppl_proxy: float, metrics: dict) -> float:
+    # 예시(교체 가능)
+    return max(0.0, 0.7 * (1.0 / max(ppl_proxy, 1e-8)) + 0.3 * max(0.0, 1 - test_time_sec / 600.0))
+
+def load_prompts(path: Path, n=512, seed=42):
+    texts = []
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            if line.strip():
+                obj = json.loads(line)
+                t = obj.get("text", "")
+                if t:
+                    texts.append(t)
+    random.Random(seed).shuffle(texts)
+    return texts[:n]
+
+PROMPTS = load_prompts(EVAL_JSONL, NUM_SAMPLES, SEED)
+print("Loaded prompts:", len(PROMPTS))
+
+def run_vllm_metrics(model_dir: Path, prompts, gpu_mem_util=0.85):
+    llm = LLM(
+        model=str(model_dir),
+        tensor_parallel_size=TP_SIZE,
+        gpu_memory_utilization=gpu_mem_util,
+        trust_remote_code=True,
+        disable_log_stats=True,
+        enforce_eager=True,  # 엔진 초기화 실패 완화
+    )
+    sp = SamplingParams(
+        temperature=TEMPERATURE,
+        top_p=TOP_P,
+        max_tokens=MAX_GEN_TOKS,
+    )
+
+    t0 = time.time()
+    outputs = llm.generate(prompts, sp)
+    elapsed = time.time() - t0
+
+    out_lens, finish = [], []
+    for o in outputs:
+        oo = o.outputs[0]
+        out_lens.append(len(oo.token_ids))
+        finish.append(getattr(oo, "finish_reason", "unknown"))
+
+    out_lens_sorted = sorted(out_lens)
+    def pct(arr, p): return arr[int((len(arr)-1)*p)]
+
+    finish_counts = {k: finish.count(k) for k in sorted(set(finish))}
+    length_finish_ratio = finish_counts.get("length", 0) / max(len(finish), 1)
+
+    del llm
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    return {
+        "test_time_sec": round(elapsed, 3),
+        "out_tok_mean": round(sum(out_lens)/len(out_lens), 2),
+        "out_tok_p50": pct(out_lens_sorted, 0.50),
+        "out_tok_p90": pct(out_lens_sorted, 0.90),
+        "out_tok_p95": pct(out_lens_sorted, 0.95),
+        "out_tok_max": max(out_lens),
+        "length_finish_ratio": round(length_finish_ratio, 4),
+        "finish_reason_counts": finish_counts,
+    }
+
+def compute_ppl_proxy(model_dir: Path, texts, max_seq_len=256):
+    tok = AutoTokenizer.from_pretrained(str(model_dir), trust_remote_code=True, local_files_only=True)
+    model = AutoModelForCausalLM.from_pretrained(
+        str(model_dir),
+        trust_remote_code=True,
+        local_files_only=True,
+        torch_dtype=torch.bfloat16,
+    ).to("cuda")
+    model.eval()
+
+    losses = []
+    with torch.no_grad():
+        for t in texts:
+            enc = tok(t, return_tensors="pt", truncation=True, max_length=max_seq_len)
+            ids = enc["input_ids"].to("cuda")
+            attn = enc["attention_mask"].to("cuda")
+            out = model(input_ids=ids, attention_mask=attn, labels=ids)
+            if out.loss is not None:
+                losses.append(out.loss.item())
+
+    del model
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    if not losses:
+        return float("inf")
+    return float(math.exp(sum(losses) / len(losses)))
+
+ckpt_df = pd.DataFrame()
+print("Checkpoint disabled: keep results in-memory only")
+
+
+# 실행할 모델 이름을 하나씩 바꿔서 실행
+RUN_MODEL = "A_anchor"  # <- ??
+
+existing = set(ckpt_df["model_name"].tolist()) if len(ckpt_df) else set()
+if RUN_MODEL in existing:
+    print(f"[SKIP] already done: {RUN_MODEL}")
+else:
+    mdir = MODEL_DIRS[RUN_MODEL]
+    assert mdir.exists(), f"missing model: {mdir}"
+
+    row = {"model_name": RUN_MODEL, "model_dir": str(mdir)}
+    try:
+        # vLLM 엔진 초기화 실패(RuntimeError) 대비: 2회 재시도
+        try:
+            vm = run_vllm_metrics(mdir, PROMPTS, gpu_mem_util=GPU_MEM_UTIL)
+        except RuntimeError:
+            print("[WARN] vLLM init failed once, retry with lower gpu_memory_utilization=0.75")
+            gc.collect(); torch.cuda.empty_cache(); time.sleep(3)
+            vm = run_vllm_metrics(mdir, PROMPTS, gpu_mem_util=0.75)
+
+        ppl = compute_ppl_proxy(mdir, PROMPTS, MAX_SEQ_LEN_FOR_PPL)
+        score = submission_score(vm["test_time_sec"], ppl, vm)
+
+        row.update({
+            "status": "success",
+            "submission_formula_score": round(score, 8),
+            "test_time_sec": vm["test_time_sec"],
+            "ppl_proxy": round(ppl, 8),
+            "out_tok_mean": vm["out_tok_mean"],
+            "out_tok_p50": vm["out_tok_p50"],
+            "out_tok_p90": vm["out_tok_p90"],
+            "out_tok_p95": vm["out_tok_p95"],
+            "out_tok_max": vm["out_tok_max"],
+            "length_finish_ratio": vm["length_finish_ratio"],
+            "finish_reason_counts": json.dumps(vm["finish_reason_counts"], ensure_ascii=False),
+            "error": "",
+        })
+        print(f"[OK] {RUN_MODEL} done")
+
+    except Exception as e:
+        row.update({
+            "status": "failed",
+            "submission_formula_score": None,
+            "test_time_sec": None,
+            "ppl_proxy": None,
+            "out_tok_mean": None,
+            "out_tok_p50": None,
+            "out_tok_p90": None,
+            "out_tok_p95": None,
+            "out_tok_max": None,
+            "length_finish_ratio": None,
+            "finish_reason_counts": "",
+            "error": f"{type(e).__name__}: {str(e)}",
+        })
+        print("[ERROR]", RUN_MODEL, row["error"])
+        print(traceback.format_exc(limit=2))
+
+    # 즉시 체크포인트 저장
+    ckpt_df = pd.concat([ckpt_df, pd.DataFrame([row])], ignore_index=True)
+    print("Checkpoint save skipped (CSV disabled)")
+
+display(ckpt_df.sort_values(["status","submission_formula_score"], ascending=[True, False]))
