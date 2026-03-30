@@ -1,47 +1,45 @@
-# GPTQ 실험 리포지토리 정리본 (2026-02-26)
+# EXAONE 모델 경량화 해커톤 (LG Aimers 8기)
 
-## 리포 구조
-- `src/` : 베이스라인/비교 스크립트(`baseline_*.py`, `awq_code.py`, `compare_models.py`, `error_initialization_test.py`).
-- `experiments/` : 날짜별 실험 자산
-  - `0213/` : 원본 GPTQ 실험 스크립트와 비교 노트북.
-  - `0222/` : 평가 노트북(`eval_0222.ipynb`, `eval_fast_compare.ipynb`)과 샘플 테스트 스크립트.
-  - `0225/` : 혼합 캘리브레이션 레시피(`0225_mix*.py`, `recipe_0225_mixed.py`, `results_template.csv`, `README.md`).
-- `data/raw/` : 공식·혼합 캘리브레이션/평가 JSONL (`calib_samples_official_256.jsonl`, `eval_samples_official_512.jsonl`).
-- `outputs/` : 제출 zip 아카이브 (`submit.zip`, `submit_20240219.zip`).
-- `qk_experiments/` : QK 실험 세트(v1, v2)와 각 제출 zip.
-- `baseline_submit/`, `submit/`, `diag/.../model/`, `base_model/` : 대용량 모델 가중치 및 설정.
+## 1. 프로젝트 목표 (Project Goal)
 
-## 주요 실험 요약
-- **0213 baseline GPTQ (W4A16, calib512)**  
-  - 스킴: W4A16, Linear 타깃, `embed_tokens`, `lm_head` 제외, bf16.  
-  - 캘리브레이션: LGAI-EXAONE/MANTA-1M, 샘플 512, max seq 512.  
-  - 점수: **0.5886399455** (루트 결과 기록).  
-  - 관련 파일: `experiments/0213/0213*.py`, `compare_0213.ipynb`, `models/` 하위 체크포인트.
+본 프로젝트는 LG Aimers 8기 온라인 해커톤 과제입니다. On-Device AI 환경의 제약(지연, 메모리, 비용)을 해결하기 위해, **`EXAONE-4.0-1.2B`** 모델을 대상으로 성능 저하를 최소화하면서 모델 크기를 줄이는 경량화 기법을 탐구하고 적용하는 것을 목표로 합니다.
 
-### 추가 실험 메모
-- **0222**  
-  - 평가 전용 노트북(`eval_0222.ipynb`, `eval_fast_compare.ipynb`), 테스트 스크립트 `test_0225_mix50`.  
-  - 사용 데이터: `data/raw/eval_samples_official_512.jsonl`.
-- **0225 혼합 캘리브레이션**  
-  - `0225_mix50_50.py`, `0225_mix70_30.py`, `0225_mix30_70.py` 프리셋.  
-  - 커스텀 비율: `python recipe_0225_mixed.py --official-ratio 60 --manta-ratio 40 --tag mix60_40`.  
-  - 결과 비교용 템플릿: `results_template.csv`. (점수 미기록 상태)
-- **QK experiments (v1/v2)**  
-  - 다양한 keep 비율/조합 실험 스크립트와 대응 제출 zip 보관.  
-  - 세부 점수는 zip/노트북에 미포함; 필요 시 재평가 필요.
+## 2. 평가 방식 (Evaluation)
 
-## 실행 메모
-- 0225 예시:
-  ```
-  cd experiments/0225
-  python .\0225_mix50_50.py
-  ```
-- 평가 노트북 실행 시 `data/raw` 경로를 맞춰 로딩.
+리더보드 점수는 아래 두 가지 지표의 비율을 조합하여 산정됩니다.
 
-## Git 관리 권장
-- `.gitignore`: `data/`, `outputs/`, `models/*.safetensors`, `*.jsonl`, `*.csv`(산출물), `__pycache__/`, `*.ipynb_checkpoints/`.
-- `.gitattributes`: `*.safetensors filter=lfs diff=lfs merge=lfs -text` 추가해 대용량 가중치를 LFS로 관리.
+*   **성능 비율:** 기본 모델(`EXAONE-4.0-1.2B`) 대비 경량화된 모델의 성능
+*   **추론 시간 감소 비율:** 기본 모델 대비 토큰당 추론 시간 감소율
 
-## 앞으로 할 일
-- 각 실험 점수와 환경(시드, GPU, 패키지 버전)을 `experiments/<날짜>/README.md`에 채워 넣기.
-- 공개 레포로 올릴 때는 가중치(`model.safetensors`)와 제출 zip을 LFS 또는 릴리스 자산으로 분리.
+최종 제출 모델은 20분 내에 전체 추론을 완료해야 하며, 압축된 `submit.zip` 파일은 10GB를 초과할 수 없습니다.
+
+## 3. 실험 요약 및 결과 (Experiments & Results)
+
+각 실험의 성능, 속도, 크기 간의 트레이드오프를 비교하기 위한 종합 결과입니다.
+
+| 순위 | 실험명 (Experiment) | 주요 방법론 (Methodology) | LB Score | Size (GB) |
+|:---:|:---|:---|:---:|:---:|
+| 1 | `0213_version1` | W4A16, `keep_layers`:[0-4, 26], calib:256 | **0.6162** | 1.14 |
+| 2 | `mixed_actorder_weight`| `act_order=weight`, Mixed-Data Calib | **0.6156** | - |
+| 3 | `qk_pA_d010` | `qk_keep`:[0-2, 26] | **0.6132** | 1.14 |
+| 4 | `qk_pB_d010` | `qk_keep`:[0-1, 28] | **0.6127** | 1.14 |
+| 5 | `GPTQ_bs64_act_static`| GPTQ, `bs=64`, `act_order=static` | **0.5901** | - |
+| 6 | `calib512` | **Baseline**: W4A16, `calib=512` | **0.5886** | - |
+| 7 | `strat_global` | Stratified Global Sampling | **0.5879** | - |
+
+*   **자동 평가 점수 / 처리 속도:** `qk_experiments/qk_experiment_eval.ipynb`의 로컬 벤치마크 결과입니다.
+*   **모델 크기:** 제출용 `submit.zip` 파일 기준입니다.
+
+## 4. 재현 환경 (Environment)
+
+해커톤 평가 서버와 동일한 환경을 구성하기 위한 주요 라이브러리 목록입니다.
+
+*   **OS:** Ubuntu 22.04
+*   **GPU:** NVIDIA L4 (22.4GiB VRAM)
+*   **Python:** 3.11.1
+*   **Key Libraries:**
+    *   `torch==2.9.0+cu128`
+    *   `transformers==4.57.3`
+    *   `vllm==0.14.1`
+    *   `safetensors==0.7.0`
+    *   `accelerate==1.10.1`
