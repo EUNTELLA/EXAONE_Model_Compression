@@ -14,6 +14,7 @@
 최종 제출 모델은 20분 내에 전체 추론을 완료해야 하며, 압축된 `submit.zip` 파일은 10GB를 초과할 수 없습니다.
 
 ## 3. 실험 요약 및 결과 (Experiments & Results)
+<img width="1189" height="581" style="width: 80%" alt="drawchart" src="https://github.com/user-attachments/assets/5b75a805-41b6-44a5-a1c6-cfaabaf8dcbf" />
 
 각 실험의 성능, 속도, 크기 간의 트레이드오프를 비교하기 위한 종합 결과입니다.
 
