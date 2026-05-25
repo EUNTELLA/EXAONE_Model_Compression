@@ -1,4 +1,4 @@
-# EXAONE Model Compression
+# EXAONE 모델 경량화 해커톤 (LG Aimers 8기)
 
 LG Aimers 8기 모델 경량화 과제를 위한 EXAONE 압축 실험 저장소입니다. `EXAONE-4.0-1.2B` 계열 모델을 대상으로 GPTQ/AWQ 기반 양자화, calibration 데이터 구성, keep layer 전략, Q/K projection 보존 전략을 실험하며, 성능 저하를 줄이면서 모델 크기와 추론 시간을 낮추는 것을 목표로 합니다.
 
@@ -197,6 +197,8 @@ exp_ignore_expanded.py
 ```
 
 ## 실험 결과 요약
+
+<img width="1189" height="581" style="width: 80%" alt="drawchart" src="https://github.com/user-attachments/assets/5b75a805-41b6-44a5-a1c6-cfaabaf8dcbf" />
 
 현재 README와 실험 문서에 기록된 주요 결과는 다음과 같습니다.
 
